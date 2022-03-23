@@ -1,8 +1,6 @@
 const rwClient = require("./twitterClient.js");
 const CronJob = require("cron").CronJob;
 const puppeteer = require ("puppeteer");
-const Match = require("./match.class")
-var listMatches = [];
 
 async function todayMatches(){
     const browser = await puppeteer.launch({headless: true});
@@ -30,8 +28,14 @@ async function todayMatches(){
 
             matchEvent = a.querySelector('.matchEventName').innerHTML;
 
-
-            let match = new Match(matchTime, matchMeta, teamOneName, teamTwoName, matchRating.length, matchEvent);
+            let match = {
+                time: matchTime,
+                meta: matchMeta,
+                teamOne: teamOneName,
+                teamTwo: teamTwoName,
+                rating: matchRating.length,
+                event: matchEvent
+            }
 
             list.push(match)
         }
@@ -40,45 +44,53 @@ async function todayMatches(){
     await browser.close();
     return list;
 }
-
-const tweetHeader = 'Today matches:';
-var tweetBody = '';
+var tweets = [];
 
 function populateListOfMatches(){
     todayMatches().then(list => {
+        var tweetBody = '';
         for (let i = 0; i < list.length; i++){
-            for (let j = 0; j < i + 6; j++){
-                if (j == 0){
-                    tweetBody = tweetBody + list[j + i] + ' VS ';
-                } else if (j == 4){
-                    let rating = 5 - list[j + i];
-                    tweetBody = tweetBody + rating + '/5 - playing for: ';
-                } else if (j == 5){
-                    tweetBody = tweetBody + list[j + i] + ';\n';
-                } else {
-                    tweetBody = tweetBody + list[j + i] + ' -> ';
-                }
+            let tweetHeader = 'Today matches: \n';
+            let tweetFooter = '(+)';
+            matchInfo = list[i];
+            let string = matchInfo.teamOne + ' VS ' + matchInfo.teamTwo + ' at ' + matchInfo.time + ' in ' + matchInfo.meta + ' playing for ' + matchInfo.event + ' Game Rating ' + (5 - matchInfo.rating) + '/5;\n';
+            
+            if(i == 0){
+                tweetBody = tweetBody + tweetHeader;
             }
-            j = 0;
-            i = i + 5;
+            if (tweetBody.length + string.length + tweetFooter.length< 280){
+                tweetBody = tweetBody + string;
+            } else {
+                if(i !== list.length -1){
+                    tweetBody = tweetBody + tweetFooter;
+                }
+                tweets.push(tweetBody);
+                tweetBody = string;
+            }
+            if(i == list.length - 1){
+                tweets.push(tweetBody);
+            }           
         }
-        console.log(tweetBody);
+
+        for (let i = 0; i < tweets.length; i ++){
+            tweet(tweets[i]);
+        }        
     });
 }
 
 
-const tweet = async () => {
+const tweet = async (finalTweet) => {
     try{
-        await rwClient.v1.tweet("New test CronJob");
+        await rwClient.v1.tweet(finalTweet);
         console.log('Posted!')
     } catch(e){
         console.error(e);
     }
 }
 
-// const job = new CronJob("0 5 * * *", () => {
-//     tweet()
-// });
+const job = new CronJob("0 5 * * *", () => {
+    populateListOfMatches();
+});
 
 // Teste post JOB
 // const job = new CronJob("* * * * *", () => {
@@ -86,7 +98,4 @@ const tweet = async () => {
 //     tweet();
 // });
 
-// job.start();
-
-populateListOfMatches();
-
+job.start();
